@@ -1,0 +1,82 @@
+[
+  {
+    "id": "8c4d1000-aba9-499f-8e93-a9a990c7923e",
+    "source": "default",
+    "created": "2026-08-09 02:36:52",
+    "keywords": [
+      "jam",
+      "buka",
+      "operasional",
+      "tutup",
+      "kerja"
+    ],
+    "answer": "Kami beroperasi Senin–Jumat pukul 08.00–17.00 WIB dan Sabtu 08.00–12.00 WIB. Hari Minggu dan libur nasional kami tutup."
+  },
+  {
+    "id": "156d9fcc-35eb-47a4-85d0-fd9c2f36d4dc",
+    "source": "default",
+    "created": "2026-08-09 02:36:52",
+    "keywords": [
+      "hubungi",
+      "kontak",
+      "telepon",
+      "email",
+      "whatsapp"
+    ],
+    "answer": "📞 Telepon: (0370) 123-4567\n📧 Email: cs@example.ac.id\n💬 WhatsApp: 0812-3456-7890"
+  },
+  {
+    "id": "5ace0819-070d-4376-b3a4-9527f7c0f881",
+    "source": "default",
+    "created": "2026-08-09 02:36:52",
+    "keywords": [
+      "harga",
+      "biaya",
+      "tarif",
+      "bayar",
+      "cost"
+    ],
+    "answer": "Informasi harga tersedia di website kami. Harga berbeda tergantung layanan yang dipilih. Hubungi kami untuk penawaran khusus."
+  },
+  {
+    "id": "8a85d298-04f8-4e71-af08-0fa74b64ea31",
+    "source": "default",
+    "created": "2026-08-09 02:36:52",
+    "keywords": [
+      "daftar",
+      "registrasi",
+      "mendaftar",
+      "pendaftaran"
+    ],
+    "answer": "Pendaftaran dapat dilakukan secara online melalui website resmi atau langsung ke kantor kami dengan membawa dokumen yang diperlukan."
+  },
+  {
+    "id": "59daa390-5eab-433f-83ca-0ef509e431f4",
+    "source": "default",
+    "created": "2026-08-09 02:36:52",
+    "keywords": [
+      "status",
+      "cek",
+      "lacak",
+      "pesanan",
+      "order"
+    ],
+    "answer": "Untuk mengecek status, login ke akun Anda atau hubungi CS dengan menyebutkan nomor transaksi/referensi Anda."
+  },
+  {
+    "id": "e0e68cc1-a7b7-4931-b2bf-46bade0e5494",
+    "keywords": [
+      "bosan",
+      "hidup",
+      "hubungi",
+      "psikiater",
+      "jangan",
+      "bunuh",
+      "diri",
+      "merepotkan"
+    ],
+    "answer": "jika anda bosan hidup maka hubungi psikiater. jangan bunuh diri karena akan merepotkan banyak orang.",
+    "source": "stress.txt",
+    "created": "2026-08-09 10:53:34"
+  }
+]

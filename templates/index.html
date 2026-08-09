@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CS Bot — Decision Tree SLM</title>
+<style>
+/* ── Reset & Tokens ─────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surf:#161b22;--surf2:#21262d;--surf3:#2d333b;
+  --border:#30363d;--accent:#58a6ff;--accent2:#7c5cfc;
+  --green:#3fb950;--orange:#d29922;--red:#f85149;
+  --text:#e6edf3;--muted:#7d8590;--muted2:#484f58;
+  --r:12px;--font:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono','Fira Mono',monospace;
+}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Header ─────────────────────────────────────────────── */
+header{
+  background:var(--surf);border-bottom:1px solid var(--border);
+  padding:12px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;
+}
+.logo{
+  width:38px;height:38px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+}
+.brand h1{font-size:14px;font-weight:600}
+.brand p{font-size:11px;color:var(--muted);margin-top:1px}
+.nav-tabs{display:flex;gap:4px;margin-left:auto}
+.nav-tab{
+  padding:5px 14px;border-radius:8px;border:1px solid var(--border);
+  background:transparent;color:var(--muted);font-size:12px;cursor:pointer;
+  font-family:var(--font);font-weight:500;transition:all .15s;
+}
+.nav-tab.active,.nav-tab:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.stat-chip{
+  display:flex;align-items:center;gap:6px;padding:4px 10px;
+  background:var(--surf2);border:1px solid var(--border);border-radius:20px;font-size:11px;
+}
+.stat-chip .val{font-weight:700;color:var(--accent)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);
+     box-shadow:0 0 6px var(--green);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── Layout ──────────────────────────────────────────────── */
+.app{display:flex;flex:1;min-height:0}
+.panel{display:none;flex:1;flex-direction:column;min-height:0}
+.panel.active{display:flex}
+
+/* ── CHAT PANEL ──────────────────────────────────────────── */
+#panelChat{flex-direction:row}
+.chat-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.messages{
+  flex:1;overflow-y:auto;padding:20px 24px;
+  display:flex;flex-direction:column;gap:14px;
+}
+.msg{display:flex;gap:10px;max-width:700px}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+.msg.bot{align-self:flex-start}
+.avatar{
+  width:32px;height:32px;border-radius:9px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+.msg.bot .avatar{background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.msg.user .avatar{background:var(--surf3);border:1px solid var(--border)}
+.msg-body{display:flex;flex-direction:column;gap:3px}
+.msg.user .msg-body{align-items:flex-end}
+.bubble{
+  padding:10px 14px;font-size:13.5px;line-height:1.65;word-break:break-word;
+  max-width:480px;
+}
+.msg.bot .bubble{
+  background:var(--surf);border:1px solid var(--border);border-radius:12px 12px 12px 3px;
+}
+.msg.user .bubble{
+  background:#1c2d4a;border:1px solid #2e4980;border-radius:12px 12px 3px 12px;
+}
+.msg-meta{font-size:10px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.badge{
+  display:inline-flex;gap:4px;align-items:center;
+  background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25);
+  border-radius:5px;padding:1px 7px;font-size:10px;color:var(--accent);
+}
+.src-badge{background:rgba(63,185,80,.1);border-color:rgba(63,185,80,.25);color:var(--green)}
+.conf-row{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)}
+.conf-bar{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--green),var(--accent));transition:width .4s}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:3px}
+.chip{
+  padding:4px 11px;border-radius:18px;font-size:11px;cursor:pointer;
+  border:1px solid var(--border);background:var(--surf2);color:var(--text);
+  transition:all .15s;font-family:var(--font);
+}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.typing .bubble{padding:12px 14px}
+.dot-anim span{
+  display:inline-block;width:6px;height:6px;background:var(--muted);
+  border-radius:50%;margin:0 2px;animation:bounce 1.2s infinite;
+}
+.dot-anim span:nth-child(2){animation-delay:.2s}
+.dot-anim span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+
+/* Input bar */
+.input-bar{
+  padding:12px 20px;border-top:1px solid var(--border);
+  background:var(--surf);display:flex;gap:10px;align-items:flex-end;flex-shrink:0;
+}
+#userMsg{
+  flex:1;background:var(--surf2);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);font-family:var(--font);
+  font-size:13.5px;padding:9px 13px;resize:none;outline:none;
+  max-height:110px;line-height:1.5;transition:border-color .2s;
+}
+#userMsg:focus{border-color:var(--accent)}
+#userMsg::placeholder{color:var(--muted2)}
+.send-btn{
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border:none;border-radius:10px;color:#fff;width:42px;height:42px;
+  font-size:18px;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;transition:opacity .2s,transform .15s;
+}
+.send-btn:hover{opacity:.85;transform:scale(1.05)}
+.send-btn:disabled{opacity:.35;cursor:default;transform:none}
+
+/* ── KB PANEL ────────────────────────────────────────────── */
+#panelKb{overflow:hidden}
+.kb-layout{display:flex;flex:1;min-height:0;overflow:hidden}
+.kb-sidebar{
+  width:260px;flex-shrink:0;border-right:1px solid var(--border);
+  display:flex;flex-direction:column;background:var(--surf);overflow:hidden;
+}
+.kb-sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--muted)}
+.doc-list{flex:1;overflow-y:auto;padding:8px}
+.doc-item{
+  padding:9px 10px;border-radius:9px;cursor:pointer;
+  border:1px solid transparent;margin-bottom:4px;transition:all .15s;
+}
+.doc-item:hover,.doc-item.active{background:var(--surf2);border-color:var(--border)}
+.doc-name{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-meta{font-size:10px;color:var(--muted);margin-top:2px}
+.doc-del{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 2px}
+.doc-del:hover{color:var(--red)}
+.kb-main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.kb-toolbar{
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  display:flex;gap:8px;align-items:center;flex-shrink:0;
+}
+.kb-search{
+  flex:1;background:var(--surf2);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-family:var(--font);
+  font-size:12px;padding:7px 11px;outline:none;transition:border-color .2s;
+}
+.kb-search:focus{border-color:var(--accent)}
+.btn{
+  padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;
+  cursor:pointer;border:none;font-family:var(--font);transition:opacity .15s;
+}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-ghost{background:var(--surf2);border:1px solid var(--border);color:var(--text)}
+.btn:hover{opacity:.85}
+.btn-danger{background:var(--red);color:#fff}
+.kb-entries{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.kb-entry{
+  background:var(--surf);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;position:relative;
+}
+.kb-entry:hover{border-color:var(--muted2)}
+.entry-kw{margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px}
+.kw-tag{
+  background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.25);
+  border-radius:4px;padding:1px 7px;font-size:10px;color:var(--accent);font-weight:600;
+}
+.entry-ans{font-size:12px;line-height:1.6;color:var(--text)}
+.entry-footer{margin-top:6px;display:flex;gap:8px;align-items:center;font-size:10px;color:var(--muted)}
+.entry-actions{position:absolute;top:10px;right:10px;display:flex;gap:4px;opacity:0;transition:opacity .15s}
+.kb-entry:hover .entry-actions{opacity:1}
+.e-btn{background:var(--surf2);border:1px solid var(--border);color:var(--text);
+       border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--font)}
+.e-btn.del{color:var(--red)}
+.e-btn:hover{border-color:var(--muted2)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--muted);font-size:13px}
+.empty-state .icon{font-size:36px;margin-bottom:12px}
+
+/* ── UPLOAD PANEL ────────────────────────────────────────── */
+#panelUpload{overflow-y:auto}
+.upload-wrap{max-width:820px;margin:0 auto;padding:28px 24px}
+.upload-wrap h2{font-size:16px;font-weight:600;margin-bottom:4px}
+.upload-wrap .sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+.upload-card{
+  background:var(--surf);border:1px solid var(--border);border-radius:var(--r);
+  padding:20px;margin-bottom:16px;
+}
+.upload-card h3{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;gap:8px;align-items:center}
+.drop-zone{
+  border:2px dashed var(--border);border-radius:10px;
+  padding:32px;text-align:center;cursor:pointer;transition:border-color .2s;
+}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--accent)}
+.drop-zone .dz-icon{font-size:32px;margin-bottom:10px}
+.drop-zone p{font-size:12px;color:var(--muted);line-height:1.6}
+.drop-zone strong{color:var(--accent)}
+#fileIn{display:none}
+textarea.paste-area{
+  width:100%;background:var(--surf2);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;
+  padding:12px;resize:vertical;outline:none;min-height:160px;
+  line-height:1.6;transition:border-color .2s;
+}
+textarea.paste-area:focus{border-color:var(--accent)}
+.fname-row{display:flex;gap:8px;margin-bottom:10px}
+.fname-row input{
+  flex:1;background:var(--surf2);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-family:var(--font);
+  font-size:12px;padding:8px 12px;outline:none;transition:border-color .2s;
+}
+.fname-row input:focus{border-color:var(--accent)}
+.action-row{display:flex;gap:8px;margin-top:10px}
+.format-box{
+  background:var(--surf2);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;font-family:var(--mono);font-size:11px;line-height:1.8;
+  color:var(--text);
+}
+.format-box .hl{color:var(--accent);font-weight:600}
+.preview-result{
+  background:var(--surf2);border:1px solid var(--border);border-radius:10px;
+  padding:14px;margin-top:12px;display:none;
+}
+.preview-result h4{font-size:12px;font-weight:600;margin-bottom:10px;color:var(--green)}
+.prev-item{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.prev-item:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.prev-para{font-size:11px;color:var(--muted);margin-bottom:5px;font-family:var(--mono)}
+.prev-kws{display:flex;flex-wrap:wrap;gap:4px}
+
+/* ── Modal ───────────────────────────────────────────────── */
+.modal-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+  z-index:50;align-items:center;justify-content:center;
+}
+.modal-backdrop.open{display:flex}
+.modal{
+  background:var(--surf);border:1px solid var(--border);border-radius:14px;
+  padding:24px;width:480px;max-width:95vw;
+}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:16px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px;letter-spacing:.4px}
+.field input,.field textarea{
+  width:100%;background:var(--surf2);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;
+  padding:9px 12px;outline:none;transition:border-color .2s;resize:vertical;
+}
+.field input:focus,.field textarea:focus{border-color:var(--accent)}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+
+/* ── Toast ───────────────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--surf);border:1px solid var(--border);border-radius:10px;
+  padding:10px 18px;font-size:13px;font-weight:500;z-index:100;
+  display:none;box-shadow:0 4px 20px rgba(0,0,0,.4);
+}
+#toast.show{display:block;animation:slideUp .25s ease}
+#toast.ok{border-color:var(--green);color:var(--green)}
+#toast.err{border-color:var(--red);color:var(--red)}
+@keyframes slideUp{from{transform:translateX(-50%) translateY(14px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
+
+/* Scrollbars */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
+<header>
+  <div class="logo">🤖</div>
+  <div class="brand">
+    <h1>CS Bot — Decision Tree SLM</h1>
+    <p>Knowledge base berbasis teks · NLP per-paragraf</p>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchPanel('Chat',this)">💬 Chat</button>
+    <button class="nav-tab" onclick="switchPanel('Kb',this)">📚 Knowledge Base</button>
+    <button class="nav-tab" onclick="switchPanel('Upload',this)">📤 Upload Dokumen</button>
+  </div>
+  <div class="stat-chip" id="statChip">
+    <div class="dot"></div>
+    <span class="val" id="statVal">0</span> entries
+  </div>
+</header>
+
+<!-- ═══ APP ══════════════════════════════════════════════════════════════════ -->
+<div class="app">
+
+  <!-- ── CHAT ── -->
+  <div class="panel active" id="panelChat">
+    <div class="chat-main">
+      <div class="messages" id="messages"></div>
+      <div class="input-bar">
+        <textarea id="userMsg" rows="1" placeholder="Ketik pertanyaan Anda…"
+          onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#10148;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── KNOWLEDGE BASE ── -->
+  <div class="panel" id="panelKb">
+    <div class="kb-layout">
+      <div class="kb-sidebar">
+        <div class="kb-sidebar-header">📂 DOKUMEN SUMBER</div>
+        <div class="doc-list" id="docList"></div>
+      </div>
+      <div class="kb-main">
+        <div class="kb-toolbar">
+          <input class="kb-search" placeholder="Cari keyword atau jawaban…" oninput="filterEntries(this.value)">
+          <button class="btn btn-primary" onclick="openAddModal()">+ Tambah Entry</button>
+          <button class="btn btn-ghost" onclick="loadKb()">↻ Refresh</button>
+        </div>
+        <div class="kb-entries" id="kbEntries">
+          <div class="empty-state"><div class="icon">📭</div><p>Memuat data…</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── UPLOAD ── -->
+  <div class="panel" id="panelUpload">
+    <div class="upload-wrap">
+      <h2>📤 Upload Dokumen Teks</h2>
+      <p class="sub">Teks akan dipecah per paragraf → keyword diekstrak otomatis (TF-IDF) → disimpan ke knowledge_base.json</p>
+
+      <!-- File upload -->
+      <div class="upload-card">
+        <h3>📄 Upload File .txt</h3>
+        <div class="drop-zone" id="dropZone"
+             onclick="document.getElementById('fileIn').click()"
+             ondragover="event.preventDefault();this.classList.add('drag')"
+             ondragleave="this.classList.remove('drag')"
+             ondrop="handleFileDrop(event)">
+          <div class="dz-icon">📄</div>
+          <p>Klik atau <strong>drag & drop</strong> file .txt di sini<br>
+             <span style="font-size:10px">Encoding UTF-8 · Maks 2 MB</span></p>
+        </div>
+        <input type="file" id="fileIn" accept=".txt" onchange="uploadFile(this.files[0])">
+      </div>
+
+      <!-- Paste -->
+      <div class="upload-card">
+        <h3>📋 Paste Teks Langsung</h3>
+        <div class="fname-row">
+          <input id="pasteName" placeholder="Nama dokumen (mis. faq-produk)" value="">
+          <button class="btn btn-ghost" onclick="previewExtraction()">🔍 Preview</button>
+          <button class="btn btn-primary" onclick="uploadPaste()">💾 Simpan</button>
+        </div>
+        <textarea class="paste-area" id="pasteText"
+          placeholder="Paste teks dokumen di sini. Pisahkan topik/paragraf dengan baris kosong.
+
+Contoh:
+
+Layanan pelanggan kami beroperasi setiap hari Senin sampai Jumat pukul delapan pagi hingga lima sore. Pada hari Sabtu kami buka setengah hari. Hubungi kami via telepon atau email untuk informasi lebih lanjut.
+
+Proses pendaftaran dapat dilakukan secara online melalui website resmi atau datang langsung ke kantor pusat dengan membawa kartu identitas dan dokumen pendukung lainnya."></textarea>
+        <div class="preview-result" id="previewResult"></div>
+      </div>
+
+      <!-- Format guide -->
+      <div class="upload-card">
+        <h3>📖 Format Teks yang Direkomendasikan</h3>
+        <div class="format-box">
+          <span class="hl"># Paragraf dipisah dengan baris kosong</span><br><br>
+          Layanan pelanggan kami beroperasi Senin–Jumat 08.00–17.00 WIB.<br>
+          Pada hari Sabtu kami buka setengah hari hingga pukul 12.00 WIB.<br>
+          <br>
+          Pendaftaran dapat dilakukan secara online atau langsung ke kantor.<br>
+          Bawa kartu identitas dan dokumen pendukung yang diperlukan.<br>
+          <br>
+          <span class="hl"># Satu paragraf = satu topik = satu entry KB</span><br>
+          <span class="hl"># Keyword diekstrak otomatis dari setiap paragraf</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL Add/Edit ════════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <h3 id="modalTitle">Tambah Entry KB</h3>
+    <div class="field">
+      <label>KATA KUNCI (pisah koma)</label>
+      <input type="text" id="mKw" placeholder="harga, biaya, tarif, cost">
+    </div>
+    <div class="field">
+      <label>JAWABAN / ANSWER</label>
+      <textarea id="mAns" rows="5" placeholder="Tulis jawaban untuk kata kunci tersebut…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
+      <button class="btn btn-primary" id="modalSave" onclick="saveModal()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════════════
+let allEntries = [];
+let allDocs    = [];
+let editId     = null;
+let filterSrc  = null;   // active doc filter
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PANEL SWITCHING
+// ═══════════════════════════════════════════════════════════════════════════
+function switchPanel(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'Kb') { loadKb(); loadDocs(); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHAT
+// ═══════════════════════════════════════════════════════════════════════════
+const CHIPS = ['Jam operasional','Cara menghubungi','Harga','Cara mendaftar','Status pesanan'];
+
+function ts() {
+  return new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+}
+
+function appendMsg(role, html, extras={}) {
+  const box = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+
+  const av = role === 'bot' ? '🤖' : '👤';
+  let meta = `<span>${ts()}</span>`;
+  let extra = '';
+
+  if (extras.matched && extras.matched.length)
+    extra += `<div class="badge">🎯 ${extras.matched.join(', ')}</div>`;
+  if (extras.source)
+    extra += ` <div class="badge src-badge">📄 ${extras.source}</div>`;
+  if (extras.score > 0 && extras.score < 1)
+    extra += `<div class="conf-row"><span>Relevansi: ${Math.round(extras.score*100)}%</span>
+      <div class="conf-bar" style="width:${Math.round(extras.score*100)}px"></div></div>`;
+
+  let chips = '';
+  if (extras.chips && extras.chips.length)
+    chips = `<div class="chips">${extras.chips.map(c=>
+      `<button class="chip" onclick="quickSend('${c}')">${c}</button>`).join('')}</div>`;
+
+  div.innerHTML = `
+    <div class="avatar">${av}</div>
+    <div class="msg-body">
+      <div class="bubble">${html}</div>
+      ${extra}${chips}
+      <div class="msg-meta">${meta}</div>
+    </div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function showTyping() {
+  const box = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot typing'; div.id = 'typing';
+  div.innerHTML = `<div class="avatar">🤖</div>
+    <div class="msg-body"><div class="bubble">
+      <div class="dot-anim"><span></span><span></span><span></span></div>
+    </div></div>`;
+  box.appendChild(div); box.scrollTop = box.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+async function sendMessage(text) {
+  const inp  = document.getElementById('userMsg');
+  const msg  = (text || inp.value).trim();
+  if (!msg) return;
+  inp.value = ''; autoResize(inp);
+  document.getElementById('sendBtn').disabled = true;
+
+  appendMsg('user', escHtml(msg));
+  showTyping();
+
+  try {
+    const r = await fetch('/api/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg})
+    });
+    const d = await r.json();
+    removeTyping();
+    appendMsg('bot', escHtml(d.reply).replace(/\n/g,'<br>'), {
+      score:   d.score,
+      matched: d.matched,
+      source:  d.source,
+      chips:   d.intent === 'greet' || d.intent === 'fallback' ? CHIPS : [],
+    });
+  } catch(e) {
+    removeTyping();
+    appendMsg('bot', '⚠️ Koneksi ke server gagal. Pastikan Flask berjalan.', {});
+  }
+  document.getElementById('sendBtn').disabled = false;
+}
+
+function quickSend(t) { sendMessage(t); }
+function handleKey(e) { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()} }
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,110)+'px'; }
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KNOWLEDGE BASE
+// ═══════════════════════════════════════════════════════════════════════════
+async function loadKb() {
+  const r = await fetch('/api/kb');
+  allEntries = await r.json();
+  updateStat(allEntries.length);
+  renderEntries(allEntries);
+}
+
+async function loadDocs() {
+  const r = await fetch('/api/documents');
+  allDocs = await r.json();
+  renderDocs();
+}
+
+function renderDocs() {
+  const el = document.getElementById('docList');
+  const sources = [...new Set(allEntries.map(e => e.source))];
+  let html = `<div class="doc-item ${filterSrc===null?'active':''}" onclick="setFilter(null,this)">
+    <div class="doc-name">🗂 Semua Entri</div>
+    <div class="doc-meta">${allEntries.length} entries</div>
+  </div>`;
+  for (const src of sources) {
+    const cnt = allEntries.filter(e=>e.source===src).length;
+    const icon = src==='manual'?'✏️':'📄';
+    const safeSrc = escHtml(src);
+    html += `<div class="doc-item ${filterSrc===src?'active':''}" onclick="setFilter('${src}',this)">
+      <button class="doc-del" onclick="event.stopPropagation();deleteDoc('${src}')" title="Hapus semua entry dari ${safeSrc}">✕</button>
+      <div class="doc-name">${icon} ${safeSrc}</div>
+      <div class="doc-meta">${cnt} entries</div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function setFilter(src, el) {
+  filterSrc = src;
+  document.querySelectorAll('.doc-item').forEach(d=>d.classList.remove('active'));
+  el.classList.add('active');
+  const filtered = src === null ? allEntries : allEntries.filter(e=>e.source===src);
+  renderEntries(filtered);
+}
+
+function filterEntries(q) {
+  q = q.toLowerCase();
+  const base = filterSrc===null ? allEntries : allEntries.filter(e=>e.source===filterSrc);
+  const result = q ? base.filter(e =>
+    e.keywords.some(k=>k.toLowerCase().includes(q)) ||
+    e.answer.toLowerCase().includes(q)
+  ) : base;
+  renderEntries(result);
+}
+
+function renderEntries(entries) {
+  const el = document.getElementById('kbEntries');
+  if (!entries.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Tidak ada entry ditemukan</p></div>';
+    return;
+  }
+  el.innerHTML = entries.map(e => `
+    <div class="kb-entry" data-id="${e.id}">
+      <div class="entry-actions">
+        <button class="e-btn" onclick="openEditModal('${e.id}')">✏️ Edit</button>
+        <button class="e-btn del" onclick="deleteEntry('${e.id}')">🗑 Hapus</button>
+      </div>
+      <div class="entry-kw">${e.keywords.map(k=>`<span class="kw-tag">${escHtml(k)}</span>`).join('')}</div>
+      <div class="entry-ans">${escHtml(e.answer).replace(/\n/g,'<br>').substring(0,220)}${e.answer.length>220?'…':''}</div>
+      <div class="entry-footer">
+        <span>📄 ${escHtml(e.source||'manual')}</span>
+        <span>🕐 ${e.created||''}</span>
+      </div>
+    </div>`).join('');
+}
+
+async function deleteEntry(id) {
+  if (!confirm('Hapus entry ini?')) return;
+  await fetch('/api/kb/'+id, {method:'DELETE'});
+  await loadKb(); loadDocs();
+  showToast('Entry dihapus', 'ok');
+}
+
+async function deleteDoc(src) {
+  if (!confirm(`Hapus semua entry dari "${src}"?`)) return;
+  await fetch('/api/documents/'+encodeURIComponent(src), {method:'DELETE'});
+  filterSrc = null;
+  await loadKb(); loadDocs();
+  showToast('Dokumen & semua entry-nya dihapus', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+function openAddModal() {
+  editId = null;
+  document.getElementById('modalTitle').textContent = 'Tambah Entry KB';
+  document.getElementById('mKw').value  = '';
+  document.getElementById('mAns').value = '';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(()=>document.getElementById('mKw').focus(),50);
+}
+
+function openEditModal(id) {
+  const entry = allEntries.find(e=>e.id===id);
+  if (!entry) return;
+  editId = id;
+  document.getElementById('modalTitle').textContent = 'Edit Entry';
+  document.getElementById('mKw').value  = entry.keywords.join(', ');
+  document.getElementById('mAns').value = entry.answer;
+  document.getElementById('modal').classList.add('open');
+  setTimeout(()=>document.getElementById('mKw').focus(),50);
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+async function saveModal() {
+  const kw  = document.getElementById('mKw').value.trim();
+  const ans = document.getElementById('mAns').value.trim();
+  if (!kw || !ans) { showToast('Isi kata kunci dan jawaban', 'err'); return; }
+  const keywords = kw.split(',').map(s=>s.trim()).filter(Boolean);
+  if (editId) {
+    await fetch('/api/kb/'+editId, {method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({keywords, answer:ans})});
+    showToast('Entry diperbarui', 'ok');
+  } else {
+    await fetch('/api/kb', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({keywords, answer:ans, source:'manual'})});
+    showToast('Entry ditambahkan', 'ok');
+  }
+  closeModal();
+  await loadKb(); loadDocs();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UPLOAD
+// ═══════════════════════════════════════════════════════════════════════════
+function handleFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag');
+  uploadFile(e.dataTransfer.files[0]);
+}
+
+async function uploadFile(file) {
+  if (!file) return;
+  if (!file.name.endsWith('.txt')) { showToast('Hanya file .txt', 'err'); return; }
+  if (file.size > 2*1024*1024) { showToast('File terlalu besar (maks 2 MB)', 'err'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  showToast('⏳ Memproses…');
+  const r = await fetch('/api/upload', {method:'POST', body:fd});
+  const d = await r.json();
+  if (r.ok) {
+    showToast(`✓ ${d.entries_added} entry dari ${d.paragraphs} paragraf disimpan`, 'ok');
+    updateStat(null);
+  } else {
+    showToast('Gagal: '+(d.error||'Unknown error'), 'err');
+  }
+}
+
+async function uploadPaste() {
+  const text = document.getElementById('pasteText').value.trim();
+  const name = document.getElementById('pasteName').value.trim() || 'paste-'+Date.now();
+  if (!text) { showToast('Teks kosong', 'err'); return; }
+  showToast('⏳ Memproses…');
+  const r = await fetch('/api/upload', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({text, filename: name+'.txt'})});
+  const d = await r.json();
+  if (r.ok) {
+    showToast(`✓ ${d.entries_added} entry dari ${d.paragraphs} paragraf disimpan`, 'ok');
+    document.getElementById('pasteText').value = '';
+    document.getElementById('previewResult').style.display = 'none';
+    updateStat(null);
+  } else {
+    showToast('Gagal: '+(d.error||'Unknown'), 'err');
+  }
+}
+
+async function previewExtraction() {
+  const text  = document.getElementById('pasteText').value.trim();
+  if (!text) { showToast('Teks kosong', 'err'); return; }
+  showToast('⏳ Mengekstrak…');
+  const r = await fetch('/api/upload/preview', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({text, top_n:8})});
+  const d = await r.json();
+  const box = document.getElementById('previewResult');
+  if (!r.ok) { showToast('Gagal: '+d.error,'err'); return; }
+  box.style.display = 'block';
+  box.innerHTML = `<h4>🔍 Preview Ekstraksi — ${d.paragraphs} paragraf</h4>` +
+    d.extraction.map(x=>`
+      <div class="prev-item">
+        <div class="prev-para">${escHtml(x.paragraph)}</div>
+        <div class="prev-kws">${x.keywords.map(k=>`<span class="kw-tag">${escHtml(k)}</span>`).join('')}</div>
+      </div>`).join('');
+  showToast('Preview siap', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATS + TOAST + UTILS
+// ═══════════════════════════════════════════════════════════════════════════
+async function updateStat(n) {
+  if (n === null) {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    n = d.total_entries;
+  }
+  document.getElementById('statVal').textContent = n;
+}
+
+let toastTimer;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.className='', 2200);
+}
+
+// Close modal on backdrop click
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+(async () => {
+  await updateStat(null);
+  // Welcome message
+  const fakeExtras = {chips: CHIPS, score: undefined, matched:[]};
+  const h = new Date().getHours();
+  const part = h<11?'Pagi':h<15?'Siang':h<18?'Sore':'Malam';
+  appendMsg('bot',
+    `Selamat ${part}! 👋 Saya <strong>CS Bot</strong> berbasis Decision Tree SLM.<br>
+     Knowledge base diproses dengan TF-IDF per paragraf. Coba ajukan pertanyaan:`,
+    fakeExtras);
+})();
+</script>
+</body>
+</html>
