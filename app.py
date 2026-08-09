@@ -4,9 +4,11 @@ app.py — Flask CS Chatbot with Decision Tree SLM
 
 import os, json, uuid, datetime
 from pathlib import Path
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template, abort, Response, send_file
+import io
 
 from nlp_engine import parse_text_to_entries, query_kb, extract_keywords_tfidf, tokenize
+from tree_renderer import build_tree_png
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -299,6 +301,36 @@ def doc_delete(filename):
     docs = [d for d in docs if d['filename'] != filename]
     save_docs(docs)
     return jsonify(ok=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# API — Decision Tree PNG
+# ══════════════════════════════════════════════════════════════════════════════
+@app.route('/api/tree/png')
+def tree_png():
+    """
+    Render full decision tree as PNG.
+    Query params:
+      dpi=<int>      default 130
+      download=1     add Content-Disposition: attachment
+    """
+    try:
+        dpi      = min(int(request.args.get('dpi', 130)), 300)
+        download = request.args.get('download', '0') == '1'
+        kb       = load_kb()
+        png_bytes = build_tree_png(kb, dpi=dpi)
+        buf = io.BytesIO(png_bytes)
+        buf.seek(0)
+        if download:
+            return send_file(
+                buf,
+                mimetype='image/png',
+                as_attachment=True,
+                download_name='decision_tree.png',
+            )
+        return send_file(buf, mimetype='image/png')
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════════

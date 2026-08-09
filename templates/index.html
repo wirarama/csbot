@@ -255,6 +255,49 @@ textarea.paste-area:focus{border-color:var(--accent)}
 .field input:focus,.field textarea:focus{border-color:var(--accent)}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 
+/* ── TREE PANEL ──────────────────────────────────────────── */
+#panelTree{overflow:hidden;flex-direction:column}
+.tree-toolbar{
+  padding:12px 20px;border-bottom:1px solid var(--border);
+  background:var(--surf);display:flex;gap:10px;align-items:center;flex-shrink:0;
+}
+.tree-toolbar h2{font-size:13px;font-weight:600;flex:1}
+.dpi-label{font-size:12px;color:var(--muted)}
+.dpi-select{
+  background:var(--surf2);border:1px solid var(--border);border-radius:7px;
+  color:var(--text);font-family:var(--font);font-size:12px;padding:5px 8px;
+  outline:none;cursor:pointer;
+}
+.tree-viewport{
+  flex:1;overflow:auto;background:var(--bg);
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:20px;
+}
+.tree-viewport img{
+  max-width:none;border-radius:10px;
+  border:1px solid var(--border);
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+  cursor:zoom-in;transition:transform .2s;
+}
+.tree-viewport img.zoomed{cursor:zoom-out;transform:scale(1);}
+.tree-empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;color:var(--muted);font-size:14px;
+}
+.tree-empty-state .big-icon{font-size:48px}
+.tree-spin{
+  width:38px;height:38px;border-radius:50%;
+  border:3px solid var(--border);border-top-color:var(--accent);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tree-info{
+  padding:10px 20px;border-top:1px solid var(--border);
+  background:var(--surf);font-size:11px;color:var(--muted);
+  display:flex;gap:16px;align-items:center;flex-shrink:0;
+}
+.tree-info span b{color:var(--text)}
+
 /* ── Toast ───────────────────────────────────────────────── */
 #toast{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
@@ -286,6 +329,7 @@ textarea.paste-area:focus{border-color:var(--accent)}
     <button class="nav-tab active" onclick="switchPanel('Chat',this)">💬 Chat</button>
     <button class="nav-tab" onclick="switchPanel('Kb',this)">📚 Knowledge Base</button>
     <button class="nav-tab" onclick="switchPanel('Upload',this)">📤 Upload Dokumen</button>
+    <button class="nav-tab" onclick="switchPanel('Tree',this)">🌳 Decision Tree</button>
   </div>
   <div class="stat-chip" id="statChip">
     <div class="dot"></div>
@@ -387,6 +431,42 @@ Proses pendaftaran dapat dilakukan secara online melalui website resmi atau data
   </div>
 </div>
 
+  <!-- ── DECISION TREE ── -->
+  <div class="panel" id="panelTree">
+    <div class="tree-toolbar">
+      <h2>🌳 Visualisasi Decision Tree</h2>
+      <span class="dpi-label">Resolusi:</span>
+      <select class="dpi-select" id="dpiSelect" onchange="reloadTree()">
+        <option value="100">100 dpi (cepat)</option>
+        <option value="130" selected>130 dpi (default)</option>
+        <option value="180">180 dpi (tinggi)</option>
+        <option value="220">220 dpi (cetak)</option>
+      </select>
+      <button class="btn btn-ghost" onclick="reloadTree()">↻ Refresh</button>
+      <button class="btn btn-primary" onclick="downloadTree()">⬇ Download PNG</button>
+    </div>
+
+    <div class="tree-viewport" id="treeViewport">
+      <div class="tree-empty-state" id="treeLoading" style="display:none">
+        <div class="tree-spin"></div>
+        <span>Merender pohon…</span>
+      </div>
+      <div class="tree-empty-state" id="treeEmpty" style="display:none">
+        <div class="big-icon">🌱</div>
+        <span>Knowledge base masih kosong.<br>Upload dokumen atau tambah entry terlebih dahulu.</span>
+      </div>
+      <img id="treeImg" src="" alt="Decision Tree" style="display:none"
+           onclick="toggleZoom(this)">
+    </div>
+
+    <div class="tree-info" id="treeInfo" style="display:none">
+      <span>Total: <b id="tiEntries">0</b> entries</span>
+      <span>Sumber: <b id="tiSources">0</b> dokumen</span>
+      <span>Resolusi: <b id="tiDpi">130</b> dpi</span>
+      <span style="color:var(--muted2)">Klik gambar untuk zoom · Download untuk PNG penuh</span>
+    </div>
+  </div>
+
 <!-- ═══ MODAL Add/Edit ════════════════════════════════════════════════════════ -->
 <div class="modal-backdrop" id="modal">
   <div class="modal">
@@ -425,7 +505,8 @@ function switchPanel(name, btn) {
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
   document.getElementById('panel' + name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'Kb') { loadKb(); loadDocs(); }
+  if (name === 'Kb')   { loadKb(); loadDocs(); }
+  if (name === 'Tree') { loadTree(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -749,6 +830,83 @@ function showToast(msg, type='') {
 document.getElementById('modal').addEventListener('click', e => {
   if (e.target === document.getElementById('modal')) closeModal();
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DECISION TREE
+// ═══════════════════════════════════════════════════════════════════════════
+let treeLoaded = false;
+
+async function loadTree() {
+  const dpi    = document.getElementById('dpiSelect').value;
+  const img    = document.getElementById('treeImg');
+  const empty  = document.getElementById('treeEmpty');
+  const loading= document.getElementById('treeLoading');
+  const info   = document.getElementById('treeInfo');
+
+  img.style.display     = 'none';
+  empty.style.display   = 'none';
+  loading.style.display = 'flex';
+  info.style.display    = 'none';
+
+  try {
+    // Check if KB has entries
+    const st = await (await fetch('/api/stats')).json();
+    if (st.total_entries === 0) {
+      loading.style.display = 'none';
+      empty.style.display   = 'flex';
+      return;
+    }
+
+    // Load PNG with cache-bust
+    const url = `/api/tree/png?dpi=${dpi}&_=${Date.now()}`;
+    const blob = await (await fetch(url)).blob();
+    const objUrl = URL.createObjectURL(blob);
+
+    // Revoke old object URL
+    if (img.dataset.objUrl) URL.revokeObjectURL(img.dataset.objUrl);
+    img.dataset.objUrl = objUrl;
+
+    img.onload = () => {
+      loading.style.display = 'none';
+      img.style.display     = 'block';
+      info.style.display    = 'flex';
+      document.getElementById('tiEntries').textContent = st.total_entries;
+      document.getElementById('tiSources').textContent = st.total_docs || Object.keys(st.sources).length;
+      document.getElementById('tiDpi').textContent     = dpi;
+    };
+    img.src = objUrl;
+    treeLoaded = true;
+  } catch(e) {
+    loading.style.display = 'none';
+    empty.style.display   = 'flex';
+    showToast('Gagal memuat pohon: ' + e.message, 'err');
+  }
+}
+
+function reloadTree() { loadTree(); }
+
+function downloadTree() {
+  const dpi = document.getElementById('dpiSelect').value;
+  const a   = document.createElement('a');
+  a.href    = `/api/tree/png?dpi=${dpi}&download=1&_=${Date.now()}`;
+  a.download = 'decision_tree.png';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('Download dimulai…', 'ok');
+}
+
+function toggleZoom(img) {
+  // Pan-zoom: toggle between fit-width and natural size
+  const vp = document.getElementById('treeViewport');
+  if (img.classList.contains('zoomed')) {
+    img.classList.remove('zoomed');
+    img.style.width = '';
+  } else {
+    img.classList.add('zoomed');
+    img.style.width = img.naturalWidth + 'px';
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INIT
