@@ -9,6 +9,7 @@ import io
 
 from nlp_engine import parse_text_to_entries, query_kb, extract_keywords_tfidf, tokenize
 from tree_renderer import build_tree_png
+from graph_engine import build_graph, build_keyword_network, graph_stats, kb_from_graph
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -349,6 +350,105 @@ def stats():
         total_docs    = len(docs),
         sources       = sources,
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# API — Graph Database (JSON export / import + visual analytics)
+# ══════════════════════════════════════════════════════════════════════════════
+@app.route('/api/graph/data', methods=['GET'])
+def graph_data():
+    """
+    Return the KB projected as a graph for visualization.
+    Query param: mode = hierarchy (default) | keyword_network
+    """
+    mode = request.args.get('mode', 'hierarchy')
+    kb = load_kb()
+    graph = build_keyword_network(kb) if mode == 'keyword_network' else build_graph(kb)
+    return jsonify(graph)
+
+
+@app.route('/api/graph/export', methods=['GET'])
+def graph_export():
+    """
+    Download the KB as a JSON graph file.
+    Query param: mode = hierarchy (default, importable) | keyword_network (analysis only)
+    """
+    mode = request.args.get('mode', 'hierarchy')
+    kb = load_kb()
+    graph = build_keyword_network(kb) if mode == 'keyword_network' else build_graph(kb)
+    payload = json.dumps(graph, ensure_ascii=False, indent=2).encode('utf-8')
+    buf = io.BytesIO(payload)
+    buf.seek(0)
+    fname = f'graph_{mode}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    return send_file(buf, mimetype='application/json',
+                      as_attachment=True, download_name=fname)
+
+
+@app.route('/api/graph/import', methods=['POST'])
+def graph_import():
+    """
+    Import a hierarchy graph JSON back into the knowledge base.
+    POST multipart/form-data  file=<.json>  [mode=replace|merge]
+    atau JSON  { "graph": {...}, "mode": "replace|merge" }
+    """
+    mode = request.args.get('mode') or 'replace'
+    graph = None
+
+    if request.content_type and 'multipart' in request.content_type:
+        f = request.files.get('file')
+        if not f:
+            return jsonify(error='Tidak ada file'), 400
+        try:
+            graph = json.loads(f.read().decode('utf-8'))
+        except Exception:
+            return jsonify(error='File JSON tidak valid'), 400
+        mode = request.form.get('mode', mode)
+    else:
+        body = request.get_json(force=True) or {}
+        graph = body.get('graph')
+        mode  = body.get('mode', mode)
+        if graph is None:
+            return jsonify(error='Field "graph" wajib diisi'), 400
+
+    try:
+        new_entries = kb_from_graph(graph)
+    except ValueError as e:
+        return jsonify(error=str(e)), 422
+
+    if mode == 'merge':
+        kb = load_kb()
+        existing_ids = {e['id'] for e in kb}
+        for e in new_entries:
+            if e['id'] in existing_ids:
+                e['id'] = str(uuid.uuid4())
+            existing_ids.add(e['id'])
+            kb.append(e)
+        save_kb(kb)
+        _rebuild_docs_from_kb(kb)
+        return jsonify(ok=True, mode='merge', imported=len(new_entries), total=len(kb)), 201
+
+    save_kb(new_entries)
+    _rebuild_docs_from_kb(new_entries)
+    return jsonify(ok=True, mode='replace', imported=len(new_entries), total=len(new_entries)), 201
+
+
+def _rebuild_docs_from_kb(kb: list):
+    """Regenerate documents.json counts to stay consistent after a graph import."""
+    counts = {}
+    for e in kb:
+        src = e.get('source', 'manual')
+        counts[src] = counts.get(src, 0) + 1
+    docs = [
+        {'filename': s, 'paragraphs': c, 'uploaded': now_str(), 'char_count': 0}
+        for s, c in counts.items()
+    ]
+    save_docs(docs)
+
+
+@app.route('/api/graph/stats', methods=['GET'])
+def graph_stats_route():
+    kb = load_kb()
+    return jsonify(graph_stats(kb))
 
 
 if __name__ == '__main__':

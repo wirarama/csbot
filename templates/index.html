@@ -298,6 +298,26 @@ textarea.paste-area:focus{border-color:var(--accent)}
 }
 .tree-info span b{color:var(--text)}
 
+/* ── GRAPH DB PANEL ──────────────────────────────────────── */
+#panelGraph{overflow:hidden;flex-direction:column}
+.graph-layout{display:flex;flex:1;min-height:0;overflow:hidden}
+.graph-canvas-wrap{flex:1;position:relative;background:var(--bg);min-width:0}
+#graphNetwork{width:100%;height:100%}
+.graph-canvas-wrap .tree-empty-state{position:absolute;inset:0}
+.graph-sidebar{
+  width:300px;flex-shrink:0;border-left:1px solid var(--border);
+  background:var(--surf);overflow-y:auto;padding:16px;
+}
+.graph-stat-block{margin-bottom:20px}
+.graph-stat-block h4{font-size:12px;font-weight:600;margin-bottom:10px;color:var(--muted)}
+.gstat-row{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--border);color:var(--text);
+}
+.gstat-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gstat-row b{color:var(--accent);flex-shrink:0}
+.gstat-empty{color:var(--muted);font-size:11px}
+
 /* ── Toast ───────────────────────────────────────────────── */
 #toast{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
@@ -330,6 +350,7 @@ textarea.paste-area:focus{border-color:var(--accent)}
     <button class="nav-tab" onclick="switchPanel('Kb',this)">📚 Knowledge Base</button>
     <button class="nav-tab" onclick="switchPanel('Upload',this)">📤 Upload Dokumen</button>
     <button class="nav-tab" onclick="switchPanel('Tree',this)">🌳 Decision Tree</button>
+    <button class="nav-tab" onclick="switchPanel('Graph',this)">🕸️ Graph DB</button>
   </div>
   <div class="stat-chip" id="statChip">
     <div class="dot"></div>
@@ -429,7 +450,6 @@ Proses pendaftaran dapat dilakukan secara online melalui website resmi atau data
       </div>
     </div>
   </div>
-</div>
 
   <!-- ── DECISION TREE ── -->
   <div class="panel" id="panelTree">
@@ -467,6 +487,51 @@ Proses pendaftaran dapat dilakukan secara online melalui website resmi atau data
     </div>
   </div>
 
+  <!-- ── GRAPH DATABASE ── -->
+  <div class="panel" id="panelGraph">
+    <div class="tree-toolbar">
+      <h2>🕸️ Graph Database</h2>
+      <select class="dpi-select" id="graphModeSelect" onchange="loadGraph()">
+        <option value="hierarchy" selected>Hierarki (Root → Sumber → Entry → Keyword)</option>
+        <option value="keyword_network">Jaringan Keyword (co-occurrence)</option>
+      </select>
+      <button class="btn btn-ghost" onclick="loadGraph()">↻ Refresh</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('graphImportIn').click()">⬆ Import JSON</button>
+      <input type="file" id="graphImportIn" accept=".json" style="display:none" onchange="importGraph(this.files[0])">
+      <button class="btn btn-primary" onclick="exportGraph()">⬇ Export JSON</button>
+    </div>
+
+    <div class="graph-layout">
+      <div class="graph-canvas-wrap">
+        <div id="graphNetwork"></div>
+        <div class="tree-empty-state" id="graphEmpty" style="display:none">
+          <div class="big-icon">🕸️</div>
+          <span>Knowledge base masih kosong.<br>Tambah data untuk melihat graph.</span>
+        </div>
+      </div>
+      <div class="graph-sidebar">
+        <div class="graph-stat-block">
+          <h4>📊 Statistik Graph</h4>
+          <div id="graphStatsBox">Memuat…</div>
+        </div>
+        <div class="graph-stat-block">
+          <h4>🔝 Keyword Teratas</h4>
+          <div id="graphTopKw"></div>
+        </div>
+        <div class="graph-stat-block">
+          <h4>🔗 Pasangan Keyword Terkait</h4>
+          <div id="graphTopPairs"></div>
+        </div>
+        <div class="graph-stat-block">
+          <h4>📁 Entry per Sumber</h4>
+          <div id="graphPerSource"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
 <!-- ═══ MODAL Add/Edit ════════════════════════════════════════════════════════ -->
 <div class="modal-backdrop" id="modal">
   <div class="modal">
@@ -488,6 +553,7 @@ Proses pendaftaran dapat dilakukan secara online melalui website resmi atau data
 
 <div id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
 // STATE
@@ -505,8 +571,9 @@ function switchPanel(name, btn) {
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
   document.getElementById('panel' + name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'Kb')   { loadKb(); loadDocs(); }
-  if (name === 'Tree') { loadTree(); }
+  if (name === 'Kb')    { loadKb(); loadDocs(); }
+  if (name === 'Tree')  { loadTree(); }
+  if (name === 'Graph') { loadGraph(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -906,6 +973,147 @@ function toggleZoom(img) {
     img.classList.add('zoomed');
     img.style.width = img.naturalWidth + 'px';
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRAPH DATABASE (visual analysis + JSON export/import)
+// ═══════════════════════════════════════════════════════════════════════════
+let graphNetworkInstance = null;
+
+const GRAPH_COLORS = { root:'#7c5cfc', source:'#d29922', entry:'#58a6ff', keyword:'#3fb950' };
+function graphNodeColor(type) { return GRAPH_COLORS[type] || '#7d8590'; }
+
+async function loadGraph() {
+  const mode  = document.getElementById('graphModeSelect').value;
+  const empty = document.getElementById('graphEmpty');
+  const box   = document.getElementById('graphNetwork');
+
+  try {
+    const st = await (await fetch('/api/stats')).json();
+    if (st.total_entries === 0) {
+      empty.style.display = 'flex';
+      box.style.display   = 'none';
+      document.getElementById('graphStatsBox').innerHTML = '';
+      document.getElementById('graphTopKw').innerHTML     = '';
+      document.getElementById('graphTopPairs').innerHTML  = '';
+      document.getElementById('graphPerSource').innerHTML = '';
+      return;
+    }
+    empty.style.display = 'none';
+    box.style.display   = 'block';
+
+    const data = await (await fetch(`/api/graph/data?mode=${mode}`)).json();
+    renderGraphNetwork(data, mode);
+    loadGraphStats();
+  } catch(e) {
+    showToast('Gagal memuat graph: ' + e.message, 'err');
+  }
+}
+
+function renderGraphNetwork(graph, mode) {
+  if (typeof vis === 'undefined') {
+    showToast('Library visualisasi graph gagal dimuat (offline?)', 'err');
+    return;
+  }
+  const nodes = new vis.DataSet(graph.nodes.map(n => {
+    const isEntry = n.type === 'entry';
+    const degree  = (n.meta && (n.meta.degree || n.meta.frequency)) || 1;
+    return {
+      id:    n.id,
+      label: isEntry ? '📝' : (n.label.length > 22 ? n.label.slice(0, 22) + '…' : n.label),
+      title: isEntry ? (n.meta.answer || '') : n.label,
+      color: graphNodeColor(n.type),
+      shape: n.type === 'keyword' ? 'dot' : (n.type === 'root' ? 'star' : 'box'),
+      size:  n.type === 'keyword' ? Math.min(8 + degree * 2, 34) : undefined,
+      font:  { color:'#e6edf3', size: 11 },
+    };
+  }));
+  const edges = new vis.DataSet(graph.edges.map((e, i) => ({
+    id: i, from: e.from, to: e.to,
+    width: e.weight ? Math.min(1 + e.weight, 6) : 1,
+    color: { color:'#30363d', opacity: 0.55, highlight:'#58a6ff' },
+    arrows: mode === 'hierarchy' ? 'to' : undefined,
+  })));
+
+  const container = document.getElementById('graphNetwork');
+  const options = {
+    physics: {
+      stabilization: { iterations: 120 },
+      barnesHut: { gravitationalConstant: -3200, springLength: 95, springConstant: 0.03 },
+    },
+    interaction: { hover: true, tooltipDelay: 100 },
+    nodes: { borderWidth: 1 },
+  };
+  if (graphNetworkInstance) graphNetworkInstance.destroy();
+  graphNetworkInstance = new vis.Network(container, { nodes, edges }, options);
+}
+
+async function loadGraphStats() {
+  const s = await (await fetch('/api/graph/stats')).json();
+
+  document.getElementById('graphStatsBox').innerHTML = `
+    <div class="gstat-row"><span>Total Entry</span><b>${s.total_entries}</b></div>
+    <div class="gstat-row"><span>Total Sumber</span><b>${s.total_sources}</b></div>
+    <div class="gstat-row"><span>Total Keyword</span><b>${s.total_keywords}</b></div>
+    <div class="gstat-row"><span>Total Edge</span><b>${s.total_edges}</b></div>
+    <div class="gstat-row"><span>Rata² Keyword/Entry</span><b>${s.avg_keywords_per_entry}</b></div>
+    <div class="gstat-row"><span>Kepadatan Graph</span><b>${s.density}</b></div>
+    <div class="gstat-row"><span>Keyword Unik (freq=1)</span><b>${s.isolated_keyword_count}</b></div>
+    <div class="gstat-row"><span>Entry Tanpa Keyword</span><b>${s.entries_without_keywords}</b></div>`;
+
+  document.getElementById('graphTopKw').innerHTML = s.top_keywords.length
+    ? s.top_keywords.map(k => `<div class="gstat-row"><span>${escHtml(k.keyword)}</span><b>${k.count}</b></div>`).join('')
+    : '<span class="gstat-empty">–</span>';
+
+  document.getElementById('graphTopPairs').innerHTML = s.top_cooccurring_pairs.length
+    ? s.top_cooccurring_pairs.map(p => `<div class="gstat-row"><span>${escHtml(p.a)} ↔ ${escHtml(p.b)}</span><b>${p.count}</b></div>`).join('')
+    : '<span class="gstat-empty">–</span>';
+
+  const perSrc = Object.entries(s.entries_per_source || {});
+  document.getElementById('graphPerSource').innerHTML = perSrc.length
+    ? perSrc.map(([src, c]) => `<div class="gstat-row"><span>${escHtml(src)}</span><b>${c}</b></div>`).join('')
+    : '<span class="gstat-empty">–</span>';
+}
+
+function exportGraph() {
+  const mode = document.getElementById('graphModeSelect').value;
+  const a = document.createElement('a');
+  a.href = `/api/graph/export?mode=${mode}&_=${Date.now()}`;
+  a.download = `graph_${mode}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('Export graph dimulai…', 'ok');
+}
+
+async function importGraph(file) {
+  if (!file) return;
+  if (!file.name.endsWith('.json')) { showToast('Hanya file .json', 'err'); return; }
+
+  if (!confirm('Import akan MENGGANTI seluruh knowledge base saat ini dengan isi graph JSON (kind="hierarchy"). Lanjutkan?')) {
+    document.getElementById('graphImportIn').value = '';
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('mode', 'replace');
+  showToast('⏳ Mengimpor graph…');
+
+  try {
+    const r = await fetch('/api/graph/import?mode=replace', { method:'POST', body: fd });
+    const d = await r.json();
+    if (r.ok) {
+      showToast(`✓ ${d.imported} entry diimpor dari graph`, 'ok');
+      updateStat(null);
+      loadGraph();
+    } else {
+      showToast('Gagal: ' + (d.error || 'Unknown'), 'err');
+    }
+  } catch(e) {
+    showToast('Gagal import: ' + e.message, 'err');
+  }
+  document.getElementById('graphImportIn').value = '';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
