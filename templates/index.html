@@ -234,6 +234,34 @@ textarea.paste-area:focus{border-color:var(--accent)}
 .prev-para{font-size:11px;color:var(--muted);margin-bottom:5px;font-family:var(--mono)}
 .prev-kws{display:flex;flex-wrap:wrap;gap:4px}
 
+/* ── SLM SWITCHER ────────────────────────────────────────── */
+.slm-switcher{display:flex;align-items:center;gap:6px;margin-left:18px;padding-left:18px;border-left:1px solid var(--border)}
+.slm-switcher .slm-ic{font-size:14px}
+.slm-select{
+  background:var(--surf2);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-family:var(--font);font-size:12px;padding:5px 9px;
+  outline:none;cursor:pointer;max-width:170px;
+}
+.btn-sm{padding:5px 10px;font-size:11px}
+
+/* ── SLM MODAL ───────────────────────────────────────────── */
+.slm-new-row{display:flex;gap:8px;margin-bottom:14px}
+.slm-new-row input{flex:1}
+.slm-list{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px}
+.slm-row{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surf2);
+}
+.slm-row.active{border-color:var(--accent)}
+.slm-row-name{font-size:12.5px;font-weight:600}
+.slm-row-meta{font-size:10.5px;color:var(--muted);margin-top:2px}
+.slm-row-actions{display:flex;gap:4px;flex-shrink:0}
+.slm-modal-footer{display:flex;justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+
+/* ── WEB SCRAPING PANEL ──────────────────────────────────── */
+.scrape-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.scrape-grid .field{margin-bottom:0}
+
 /* ── Modal ───────────────────────────────────────────────── */
 .modal-backdrop{
   display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
@@ -345,10 +373,16 @@ textarea.paste-area:focus{border-color:var(--accent)}
     <h1>CS Bot — Decision Tree SLM</h1>
     <p>Knowledge base berbasis teks · NLP per-paragraf</p>
   </div>
+  <div class="slm-switcher">
+    <span class="slm-ic">🗂</span>
+    <select class="slm-select" id="slmSelect" onchange="onSlmSelectChange(this.value)"></select>
+    <button class="btn btn-ghost btn-sm" onclick="openSlmModal()">⚙ Kelola SLM</button>
+  </div>
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="switchPanel('Chat',this)">💬 Chat</button>
     <button class="nav-tab" onclick="switchPanel('Kb',this)">📚 Knowledge Base</button>
     <button class="nav-tab" onclick="switchPanel('Upload',this)">📤 Upload Dokumen</button>
+    <button class="nav-tab" onclick="switchPanel('Scrape',this)">🌐 Web Scraping</button>
     <button class="nav-tab" onclick="switchPanel('Tree',this)">🌳 Decision Tree</button>
     <button class="nav-tab" onclick="switchPanel('Graph',this)">🕸️ Graph DB</button>
   </div>
@@ -446,6 +480,55 @@ Proses pendaftaran dapat dilakukan secara online melalui website resmi atau data
           <br>
           <span class="hl"># Satu paragraf = satu topik = satu entry KB</span><br>
           <span class="hl"># Keyword diekstrak otomatis dari setiap paragraf</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── WEB SCRAPING ── -->
+  <div class="panel" id="panelScrape">
+    <div class="upload-wrap">
+      <h2>🌐 Web Scraping</h2>
+      <p class="sub">Ambil teks dari sebuah halaman web berdasarkan HTML tag / CSS class → diproses lewat pipeline NLP yang sama seperti upload dokumen → semua elemen yang cocok disimpan sebagai SATU dokumen sumber di SLM yang sedang aktif.</p>
+
+      <div class="upload-card">
+        <h3>🔗 Sumber Halaman</h3>
+        <div class="field">
+          <label>URL HALAMAN</label>
+          <input type="text" id="scrapeUrl" placeholder="https://contoh.com/faq">
+        </div>
+        <div class="scrape-grid">
+          <div class="field">
+            <label>HTML TAG</label>
+            <input type="text" id="scrapeTag" placeholder="p, div, article…">
+          </div>
+          <div class="field">
+            <label>CSS CLASS</label>
+            <input type="text" id="scrapeClass" placeholder="content, faq-item…">
+          </div>
+        </div>
+        <div class="field">
+          <label>SELECTOR CSS LANJUTAN (opsional, override tag/class di atas)</label>
+          <input type="text" id="scrapeSelector" placeholder="mis. div.article > p, #main .faq-item">
+        </div>
+        <div class="fname-row">
+          <input id="scrapeName" placeholder="Nama dokumen (opsional, default dari URL)">
+          <button class="btn btn-ghost" onclick="previewScrape()">🔍 Preview</button>
+          <button class="btn btn-primary" onclick="saveScrape()">💾 Ambil & Simpan</button>
+        </div>
+        <div class="preview-result" id="scrapePreviewResult"></div>
+      </div>
+
+      <div class="upload-card">
+        <h3>📖 Cara Kerja</h3>
+        <div class="format-box">
+          <span class="hl"># Isi minimal salah satu: HTML tag, CSS class, atau selector CSS lanjutan</span><br><br>
+          Tag <code>p</code> → ambil semua tag &lt;p&gt;<br>
+          Class <code>content</code> → ambil semua elemen dengan class="content"<br>
+          Tag + Class → <code>div</code> + <code>faq-item</code> setara selector <code>div.faq-item</code><br>
+          Selector lanjutan → CSS selector bebas (mis. <code>#main .faq-item</code>), override tag/class di atas<br><br>
+          <span class="hl"># Setiap elemen yang cocok menjadi satu paragraf/entry KB</span><br>
+          <span class="hl"># Semua hasil dari satu URL digabung & disimpan sebagai satu dokumen sumber</span>
         </div>
       </div>
     </div>
@@ -551,6 +634,23 @@ Proses pendaftaran dapat dilakukan secara online melalui website resmi atau data
   </div>
 </div>
 
+<!-- ═══ MODAL Kelola SLM ══════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="slmModal">
+  <div class="modal" style="width:560px">
+    <h3>🗂 Kelola SLM (Small Language Model)</h3>
+    <div class="slm-new-row">
+      <input type="text" id="newSlmName" placeholder="Nama SLM baru (mis. Produk A)">
+      <button class="btn btn-primary" onclick="createSlm()">+ Buat Kosong</button>
+    </div>
+    <div class="slm-list" id="slmModalList"></div>
+    <div class="slm-modal-footer">
+      <button class="btn btn-ghost" onclick="triggerImportSlm()">⬆ Import SLM (.json)</button>
+      <input type="file" id="slmImportIn" accept=".json" style="display:none" onchange="importSlmFile(this.files[0])">
+      <button class="btn btn-ghost" onclick="closeSlmModal()">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -562,6 +662,8 @@ let allEntries = [];
 let allDocs    = [];
 let editId     = null;
 let filterSrc  = null;   // active doc filter
+let allSlms    = [];
+let activeSlmId = null;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PANEL SWITCHING
@@ -697,7 +799,7 @@ function renderDocs() {
   </div>`;
   for (const src of sources) {
     const cnt = allEntries.filter(e=>e.source===src).length;
-    const icon = src==='manual'?'✏️':'📄';
+    const icon = src==='manual' ? '✏️' : (src.startsWith('scrape_') ? '🌐' : '📄');
     const safeSrc = escHtml(src);
     html += `<div class="doc-item ${filterSrc===src?'active':''}" onclick="setFilter('${src}',this)">
       <button class="doc-del" onclick="event.stopPropagation();deleteDoc('${src}')" title="Hapus semua entry dari ${safeSrc}">✕</button>
@@ -1117,9 +1219,212 @@ async function importGraph(file) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SLM MANAGEMENT (switch / create empty / rename / delete / export / import)
+// ═══════════════════════════════════════════════════════════════════════════
+async function loadSlms() {
+  const r = await fetch('/api/slm');
+  allSlms = await r.json();
+  const active = allSlms.find(s => s.active);
+  activeSlmId = active ? active.id : null;
+  renderSlmSelect();
+  renderSlmModalList();
+}
+
+function renderSlmSelect() {
+  const sel = document.getElementById('slmSelect');
+  if (!sel) return;
+  sel.innerHTML = allSlms.map(s =>
+    `<option value="${s.id}" ${s.active ? 'selected' : ''}>${escHtml(s.name)} (${s.entries})</option>`
+  ).join('');
+}
+
+async function onSlmSelectChange(id) {
+  await fetch(`/api/slm/${id}/activate`, {method:'POST'});
+  await afterSlmSwitch();
+}
+
+async function afterSlmSwitch() {
+  await loadSlms();
+  filterSrc = null;
+  await loadKb();
+  await loadDocs();
+  updateStat(null);
+  if (document.getElementById('panelTree').classList.contains('active'))  loadTree();
+  if (document.getElementById('panelGraph').classList.contains('active')) loadGraph();
+  const active = allSlms.find(s => s.id === activeSlmId);
+  showToast('SLM aktif: ' + (active ? active.name : '-'), 'ok');
+}
+
+function openSlmModal() {
+  renderSlmModalList();
+  document.getElementById('slmModal').classList.add('open');
+}
+function closeSlmModal() { document.getElementById('slmModal').classList.remove('open'); }
+
+function renderSlmModalList() {
+  const el = document.getElementById('slmModalList');
+  if (!el) return;
+  if (!allSlms.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">🗂</div><p>Belum ada SLM</p></div>';
+    return;
+  }
+  el.innerHTML = allSlms.map(s => `
+    <div class="slm-row ${s.active ? 'active' : ''}">
+      <div class="slm-row-main">
+        <div class="slm-row-name">${s.active ? '⭐ ' : ''}${escHtml(s.name)}</div>
+        <div class="slm-row-meta">${s.entries} entries · ${s.documents} dokumen · dibuat ${escHtml(s.created||'')}</div>
+      </div>
+      <div class="slm-row-actions">
+        ${s.active ? '' : `<button class="e-btn" onclick="activateSlm('${s.id}')" title="Aktifkan">✓ Aktifkan</button>`}
+        <button class="e-btn" onclick="renameSlm('${s.id}')" title="Ganti nama">✏️</button>
+        <button class="e-btn" onclick="exportSlm('${s.id}')" title="Export JSON">⬇</button>
+        <button class="e-btn del" onclick="deleteSlm('${s.id}')" title="Hapus">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+async function createSlm() {
+  const input = document.getElementById('newSlmName');
+  const name = input.value.trim();
+  if (!name) { showToast('Nama SLM wajib diisi', 'err'); return; }
+  const r = await fetch('/api/slm', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name})});
+  const d = await r.json();
+  if (r.ok) {
+    input.value = '';
+    showToast(`SLM "${d.name}" dibuat & diaktifkan (kosong)`, 'ok');
+    await afterSlmSwitch();
+  } else {
+    showToast('Gagal: ' + (d.error || 'Unknown'), 'err');
+  }
+}
+
+async function activateSlm(id) {
+  await fetch(`/api/slm/${id}/activate`, {method:'POST'});
+  await afterSlmSwitch();
+}
+
+async function renameSlm(id) {
+  const current = allSlms.find(s => s.id === id);
+  const name = prompt('Nama baru untuk SLM:', current ? current.name : '');
+  if (!name || !name.trim()) return;
+  const r = await fetch(`/api/slm/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name: name.trim()})});
+  if (r.ok) { showToast('Nama SLM diperbarui', 'ok'); await loadSlms(); }
+  else showToast('Gagal mengganti nama', 'err');
+}
+
+function exportSlm(id) {
+  const a = document.createElement('a');
+  a.href = `/api/slm/${id}/export?_=${Date.now()}`;
+  a.download = 'slm_export.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('Export SLM dimulai…', 'ok');
+}
+
+async function deleteSlm(id) {
+  if (allSlms.length <= 1) { showToast('Tidak bisa menghapus satu-satunya SLM', 'err'); return; }
+  const target = allSlms.find(s => s.id === id);
+  if (!confirm(`Hapus SLM "${target ? target.name : id}"? Semua data di dalamnya akan hilang permanen.`)) return;
+  const r = await fetch(`/api/slm/${id}`, {method:'DELETE'});
+  const d = await r.json();
+  if (r.ok) { showToast('SLM dihapus', 'ok'); await afterSlmSwitch(); }
+  else showToast('Gagal: ' + (d.error || 'Unknown'), 'err');
+}
+
+function triggerImportSlm() { document.getElementById('slmImportIn').click(); }
+
+async function importSlmFile(file) {
+  if (!file) return;
+  if (!file.name.endsWith('.json')) { showToast('Hanya file .json', 'err'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  showToast('⏳ Mengimpor SLM…');
+  try {
+    const r = await fetch('/api/slm/import', {method:'POST', body: fd});
+    const d = await r.json();
+    if (r.ok) {
+      showToast(`✓ SLM "${d.name}" diimpor (${d.entries} entry, ${d.documents} dokumen)`, 'ok');
+      await afterSlmSwitch();
+    } else {
+      showToast('Gagal import: ' + (d.error || 'Unknown'), 'err');
+    }
+  } catch(e) {
+    showToast('Gagal import: ' + e.message, 'err');
+  }
+  document.getElementById('slmImportIn').value = '';
+}
+
+// Close SLM modal on backdrop click
+document.getElementById('slmModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('slmModal')) closeSlmModal();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WEB SCRAPING
+// ═══════════════════════════════════════════════════════════════════════════
+async function previewScrape() {
+  const url = document.getElementById('scrapeUrl').value.trim();
+  const tag = document.getElementById('scrapeTag').value.trim();
+  const cls = document.getElementById('scrapeClass').value.trim();
+  const sel = document.getElementById('scrapeSelector').value.trim();
+  if (!url) { showToast('URL wajib diisi', 'err'); return; }
+  if (!tag && !cls && !sel) { showToast('Isi HTML tag, CSS class, atau selector', 'err'); return; }
+
+  showToast('⏳ Mengambil & mengekstrak halaman…');
+  const box = document.getElementById('scrapePreviewResult');
+  try {
+    const r = await fetch('/api/scrape/preview', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url, tag, css_class: cls, selector: sel})});
+    const d = await r.json();
+    if (!r.ok) { showToast('Gagal: ' + d.error, 'err'); box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = `<h4>🔍 ${d.elements_found} elemen ditemukan (selector: <code>${escHtml(d.selector)}</code>) — ${d.paragraphs} valid</h4>` +
+      d.extraction.map(x => `
+        <div class="prev-item">
+          <div class="prev-para">${escHtml(x.paragraph)}</div>
+          <div class="prev-kws">${x.keywords.map(k => `<span class="kw-tag">${escHtml(k)}</span>`).join('')}</div>
+        </div>`).join('');
+    showToast('Preview siap', 'ok');
+  } catch(e) {
+    showToast('Gagal: ' + e.message, 'err');
+  }
+}
+
+async function saveScrape() {
+  const url  = document.getElementById('scrapeUrl').value.trim();
+  const tag  = document.getElementById('scrapeTag').value.trim();
+  const cls  = document.getElementById('scrapeClass').value.trim();
+  const sel  = document.getElementById('scrapeSelector').value.trim();
+  const name = document.getElementById('scrapeName').value.trim();
+  if (!url) { showToast('URL wajib diisi', 'err'); return; }
+  if (!tag && !cls && !sel) { showToast('Isi HTML tag, CSS class, atau selector', 'err'); return; }
+
+  showToast('⏳ Mengambil, mengekstrak & menyimpan…');
+  try {
+    const r = await fetch('/api/scrape', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url, tag, css_class: cls, selector: sel, filename: name})});
+    const d = await r.json();
+    if (r.ok) {
+      showToast(`✓ ${d.entries_added} entry disimpan sebagai dokumen "${d.filename}"`, 'ok');
+      document.getElementById('scrapePreviewResult').style.display = 'none';
+      updateStat(null);
+      loadSlms();
+    } else {
+      showToast('Gagal: ' + (d.error || 'Unknown'), 'err');
+    }
+  } catch(e) {
+    showToast('Gagal: ' + e.message, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════════════════
 (async () => {
+  await loadSlms();
   await updateStat(null);
   // Welcome message
   const fakeExtras = {chips: CHIPS, score: undefined, matched:[]};
