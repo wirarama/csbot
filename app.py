@@ -24,11 +24,14 @@ import io
 
 import requests as _requests
 
+import pandas as pd
+
 from nlp_engine import parse_text_to_entries, query_kb, extract_keywords_tfidf, tokenize
 from tree_renderer import build_tree_png
 from graph_engine import build_graph, build_keyword_network, graph_stats, kb_from_graph
 from scraper import scrape as scrape_url
 from response_composer import compose_reply
+from csv_engine import analyze_csv
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -540,6 +543,110 @@ def preview_extraction():
         for p, kws in zip(paras, kw_lists)
     ]
     return jsonify(paragraphs=len(paras), extraction=result)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# API — Upload CSV + Analisis Statistik (pandas) — masuk ke SLM aktif
+# ══════════════════════════════════════════════════════════════════════════════
+@app.route('/api/upload/csv', methods=['POST'])
+def upload_csv():
+    """
+    Upload file CSV — baris pertama otomatis jadi nama kolom (standar pandas).
+    Modul csv_engine.py mendeteksi tipe tiap kolom (numerik / tanggal-waktu /
+    kategorikal), menghitung describe(), correlation matrix, dan statistik
+    lain, lalu menyusunnya jadi entri Knowledge Base berbahasa Indonesia.
+    Entri-entri itu disimpan ke SLM aktif sehingga bisa langsung dijawab
+    lewat /api/chat memakai pipeline decision-tree + response_composer yang
+    sudah ada — sama seperti upload dokumen .txt.
+
+    POST multipart/form-data  file=<.csv>
+    """
+    f = request.files.get('file')
+    if not f:
+        return jsonify(error='Tidak ada file'), 400
+    filename = f.filename or 'data.csv'
+    if not filename.lower().endswith('.csv'):
+        return jsonify(error='Hanya file .csv yang didukung'), 400
+
+    try:
+        result = analyze_csv(io.BytesIO(f.read()), source=filename)
+    except pd.errors.EmptyDataError:
+        return jsonify(error='File CSV kosong'), 422
+    except ValueError as e:
+        return jsonify(error=str(e)), 422
+    except Exception as e:
+        return jsonify(error=f'Gagal membaca CSV: {e}'), 422
+
+    if not result['kb_entries']:
+        return jsonify(error='Tidak ada statistik yang bisa dihitung dari CSV ini'), 422
+
+    # Ganti entri lama dari file dengan nama sama (perilaku sama seperti upload .txt)
+    kb = load_kb()
+    kb = [e for e in kb if e.get('source') != filename]
+
+    new_entries = []
+    for e in result['kb_entries']:
+        entry = {
+            'id':       str(uuid.uuid4()),
+            'keywords': e['keywords'],
+            'answer':   e['answer'],
+            'source':   filename,
+            'created':  now_str(),
+        }
+        new_entries.append(entry)
+
+    kb.extend(new_entries)
+    save_kb(kb)
+
+    docs = load_docs()
+    docs = [d for d in docs if d['filename'] != filename]
+    docs.append({
+        'filename':    filename,
+        'paragraphs':  len(new_entries),
+        'uploaded':    now_str(),
+        'char_count':  0,
+        'source_type': 'csv',
+        'rows':        result['n_rows'],
+        'columns':     result['n_cols'],
+    })
+    save_docs(docs)
+
+    return jsonify(
+        ok            = True,
+        filename      = filename,
+        rows          = result['n_rows'],
+        columns       = result['n_cols'],
+        column_types  = result['column_types'],
+        entries_added = len(new_entries),
+        summary       = result['summary_sentence'],
+        preview       = new_entries[:5],
+    ), 201
+
+
+@app.route('/api/upload/csv/preview', methods=['POST'])
+def preview_csv():
+    """
+    Preview analisis CSV (tipe kolom, describe, correlation matrix, dan
+    kalimat KB yang akan dibuat) TANPA menyimpan apa pun ke SLM.
+    POST multipart/form-data  file=<.csv>
+    """
+    f = request.files.get('file')
+    if not f:
+        return jsonify(error='Tidak ada file'), 400
+    filename = f.filename or 'data.csv'
+    if not filename.lower().endswith('.csv'):
+        return jsonify(error='Hanya file .csv yang didukung'), 400
+
+    try:
+        result = analyze_csv(io.BytesIO(f.read()), source=filename)
+    except pd.errors.EmptyDataError:
+        return jsonify(error='File CSV kosong'), 422
+    except ValueError as e:
+        return jsonify(error=str(e)), 422
+    except Exception as e:
+        return jsonify(error=f'Gagal membaca CSV: {e}'), 422
+
+    return jsonify(result)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

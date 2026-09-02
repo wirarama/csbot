@@ -233,6 +233,12 @@ textarea.paste-area:focus{border-color:var(--accent)}
 .prev-item:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
 .prev-para{font-size:11px;color:var(--muted);margin-bottom:5px;font-family:var(--mono)}
 .prev-kws{display:flex;flex-wrap:wrap;gap:4px}
+.csv-table-wrap{overflow-x:auto;margin-bottom:12px;border:1px solid var(--border);border-radius:8px}
+.csv-table{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);white-space:nowrap}
+.csv-table th,.csv-table td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--border)}
+.csv-table th:first-child,.csv-table td:first-child{text-align:left;color:var(--muted);font-family:var(--font)}
+.csv-table thead th{background:var(--surf2);color:var(--muted);font-weight:600;position:sticky;top:0}
+.csv-table tbody tr:last-child td{border-bottom:none}
 
 /* ── SLM SWITCHER ────────────────────────────────────────── */
 .slm-switcher{display:flex;align-items:center;gap:6px;margin-left:18px;padding-left:18px;border-left:1px solid var(--border)}
@@ -465,6 +471,31 @@ Layanan pelanggan kami beroperasi setiap hari Senin sampai Jumat pukul delapan p
 
 Proses pendaftaran dapat dilakukan secara online melalui website resmi atau datang langsung ke kantor pusat dengan membawa kartu identitas dan dokumen pendukung lainnya."></textarea>
         <div class="preview-result" id="previewResult"></div>
+      </div>
+
+      <!-- CSV upload -->
+      <div class="upload-card">
+        <h3>📊 Upload File CSV — Analisis Statistik</h3>
+        <p style="font-size:11px;color:var(--muted);margin:-6px 0 12px;line-height:1.6">
+          Baris pertama otomatis jadi nama kolom → tiap kolom dideteksi otomatis (numerik / tanggal-waktu / kategorikal) →
+          describe(), correlation matrix, dan statistik lain dihitung dengan pandas → diubah jadi kalimat Bahasa Indonesia
+          yang bisa langsung dijawab lewat Chat (mis. "berapa suhu tertinggi").
+        </p>
+        <div class="drop-zone" id="csvDropZone"
+             onclick="document.getElementById('csvFileIn').click()"
+             ondragover="event.preventDefault();this.classList.add('drag')"
+             ondragleave="this.classList.remove('drag')"
+             ondrop="handleCsvDrop(event)">
+          <div class="dz-icon">📊</div>
+          <p id="csvDzText">Klik atau <strong>drag & drop</strong> file .csv di sini<br>
+             <span style="font-size:10px">Baris pertama = nama kolom · Maks 5 MB</span></p>
+        </div>
+        <input type="file" id="csvFileIn" accept=".csv" onchange="selectCsvFile(this.files[0])">
+        <div class="fname-row" style="margin-top:10px">
+          <button class="btn btn-ghost" onclick="previewCsv()">🔍 Preview</button>
+          <button class="btn btn-primary" onclick="uploadCsv()">💾 Upload & Simpan</button>
+        </div>
+        <div class="preview-result" id="csvPreviewResult"></div>
       </div>
 
       <!-- Format guide -->
@@ -799,7 +830,7 @@ function renderDocs() {
   </div>`;
   for (const src of sources) {
     const cnt = allEntries.filter(e=>e.source===src).length;
-    const icon = src==='manual' ? '✏️' : (src.startsWith('scrape_') ? '🌐' : '📄');
+    const icon = src==='manual' ? '✏️' : (src.startsWith('scrape_') ? '🌐' : (src.toLowerCase().endsWith('.csv') ? '📊' : '📄'));
     const safeSrc = escHtml(src);
     html += `<div class="doc-item ${filterSrc===src?'active':''}" onclick="setFilter('${src}',this)">
       <button class="doc-del" onclick="event.stopPropagation();deleteDoc('${src}')" title="Hapus semua entry dari ${safeSrc}">✕</button>
@@ -972,6 +1003,102 @@ async function previewExtraction() {
         <div class="prev-kws">${x.keywords.map(k=>`<span class="kw-tag">${escHtml(k)}</span>`).join('')}</div>
       </div>`).join('');
   showToast('Preview siap', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UPLOAD CSV — baca CSV, hitung statistik (pandas), tampilkan kalimat KB
+// ═══════════════════════════════════════════════════════════════════════════
+let csvFile = null;
+
+function handleCsvDrop(e) {
+  e.preventDefault();
+  document.getElementById('csvDropZone').classList.remove('drag');
+  selectCsvFile(e.dataTransfer.files[0]);
+}
+
+function selectCsvFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.csv')) { showToast('Hanya file .csv', 'err'); return; }
+  if (file.size > 5*1024*1024) { showToast('File terlalu besar (maks 5 MB)', 'err'); return; }
+  csvFile = file;
+  document.getElementById('csvDzText').innerHTML =
+    `File dipilih: <strong>${escHtml(file.name)}</strong><br><span style="font-size:10px">Klik Preview atau Upload & Simpan</span>`;
+}
+
+const CSV_TYPE_LABEL = {numeric:'🔢 numerik', datetime:'📅 tanggal/waktu', categorical:'🏷 kategorikal'};
+
+function renderCsvAnalysis(d, saved) {
+  const box = document.getElementById('csvPreviewResult');
+  box.style.display = 'block';
+
+  const colBadges = Object.entries(d.column_types || {})
+    .map(([c,t]) => `<span class="kw-tag">${escHtml(c)} · ${CSV_TYPE_LABEL[t]||t}</span>`).join('');
+
+  let describeHtml = '';
+  if (d.describe && d.describe.length) {
+    const cols = Object.keys(d.describe[0]).filter(k => k !== 'stat');
+    describeHtml = `<div class="csv-table-wrap"><table class="csv-table"><thead><tr><th>describe()</th>${
+      cols.map(c=>`<th>${escHtml(c)}</th>`).join('')}</tr></thead><tbody>${
+      d.describe.map(row => `<tr><td>${escHtml(String(row.stat))}</td>${
+        cols.map(c=>`<td>${typeof row[c]==='number' ? row[c].toFixed(2) : escHtml(String(row[c]))}</td>`).join('')
+      }</tr>`).join('')
+    }</tbody></table></div>`;
+  }
+
+  let corrHtml = '';
+  if (d.correlation && d.correlation.length) {
+    const cols = Object.keys(d.correlation[0]).filter(k => k !== 'kolom');
+    corrHtml = `<div class="csv-table-wrap"><table class="csv-table"><thead><tr><th>korelasi</th>${
+      cols.map(c=>`<th>${escHtml(c)}</th>`).join('')}</tr></thead><tbody>${
+      d.correlation.map(row => `<tr><td>${escHtml(String(row.kolom))}</td>${
+        cols.map(c=>`<td>${typeof row[c]==='number' ? row[c].toFixed(2) : escHtml(String(row[c]))}</td>`).join('')
+      }</tr>`).join('')
+    }</tbody></table></div>`;
+  }
+
+  const entries = d.kb_entries || d.preview || [];
+  const entriesHtml = entries.map(e => `
+    <div class="prev-item">
+      <div class="prev-para">${escHtml(e.answer)}</div>
+      <div class="prev-kws">${(e.keywords||[]).map(k=>`<span class="kw-tag">${escHtml(k)}</span>`).join('')}</div>
+    </div>`).join('');
+
+  const totalKalimat = saved ? d.entries_added : entries.length;
+  box.innerHTML = `
+    <h4>${saved ? '✓ Tersimpan ke SLM aktif' : '🔍 Preview (belum disimpan)'} — ${d.n_rows ?? d.rows} baris × ${d.n_cols ?? (Array.isArray(d.columns) ? d.columns.length : d.columns)} kolom</h4>
+    <div class="prev-kws" style="margin-bottom:10px">${colBadges}</div>
+    <p style="font-size:12px;color:var(--text);margin-bottom:12px">${escHtml(d.summary || d.summary_sentence || '')}</p>
+    ${describeHtml}
+    ${corrHtml}
+    <h4 style="margin-top:4px">💬 Kalimat KB yang ${saved ? 'disimpan' : 'akan dibuat'} (${totalKalimat})${saved && entries.length < totalKalimat ? ' — 5 ditampilkan' : ''}</h4>
+    ${entriesHtml}
+  `;
+}
+
+async function previewCsv() {
+  if (!csvFile) { showToast('Pilih file CSV dulu', 'err'); return; }
+  const fd = new FormData();
+  fd.append('file', csvFile);
+  showToast('⏳ Menganalisis…');
+  const r = await fetch('/api/upload/csv/preview', {method:'POST', body:fd});
+  const d = await r.json();
+  if (!r.ok) { showToast('Gagal: '+(d.error||'Unknown error'), 'err'); return; }
+  renderCsvAnalysis(d, false);
+  showToast('Preview siap', 'ok');
+}
+
+async function uploadCsv() {
+  if (!csvFile) { showToast('Pilih file CSV dulu', 'err'); return; }
+  const fd = new FormData();
+  fd.append('file', csvFile);
+  showToast('⏳ Memproses…');
+  const r = await fetch('/api/upload/csv', {method:'POST', body:fd});
+  const d = await r.json();
+  if (!r.ok) { showToast('Gagal: '+(d.error||'Unknown error'), 'err'); return; }
+  showToast(`✓ ${d.entries_added} kalimat statistik disimpan`, 'ok');
+  renderCsvAnalysis(d, true);
+  updateStat(null);
+  loadDocs();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
